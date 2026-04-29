@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Student Attendance Profile</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1e293b; margin: 0; padding: 40px; background: #f8fafc; }
+        .container { background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 2px solid #f1f5f9; padding-bottom: 20px; }
+        .header h1 { margin: 0; font-size: 32px; background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .header-sub { font-size: 14px; color: #64748b; }
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 40px; }
+        .stat-card { background: #f1f5f9; padding: 20px; border-radius: 8px; border-left: 4px solid #38bdf8; }
+        .stat-card.green { border-left-color: #10b981; }
+        .stat-card.red { border-left-color: #ef4444; }
+        .stat-val { font-size: 28px; font-weight: bold; margin-bottom: 5px; color: #0f172a; }
+        .stat-lbl { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+        .chart-container { width: 100%; max-width: 400px; margin: 0 auto 40px; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        th { background: #f8fafc; color: #475569; font-weight: bold; }
+        .status-granted { color: #10b981; font-weight: bold; }
+        .status-denied { color: #ef4444; font-weight: bold; }
+        .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1><%= studentName %></h1>
+                <div class="header-sub">Campus ID / Hash: <%= studentHash %></div>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-weight:bold; color:#0f172a;">Attendance Profile</div>
+                <div class="header-sub">Generated: <%= new Date().toLocaleDateString() %></div>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-val"><%= totalScans %></div>
+                <div class="stat-lbl">Total Scans</div>
+            </div>
+            <div class="stat-card green">
+                <div class="stat-val"><%= granted %></div>
+                <div class="stat-lbl">Access Granted</div>
+            </div>
+            <div class="stat-card red">
+                <div class="stat-val"><%= denied %></div>
+                <div class="stat-lbl">Access Denied</div>
+            </div>
+        </div>
+
+        <% if (totalScans > 0) { %>
+        <div class="chart-container">
+            <canvas id="attendanceChart"></canvas>
+        </div>
+        <script>
+            const ctx = document.getElementById('attendanceChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Granted', 'Denied'],
+                    datasets: [{
+                        data: [<%= granted %>, <%= denied %>],
+                        backgroundColor: ['#10b981', '#ef4444'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    animation: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+            document.body.classList.add('chart-ready');
+        </script>
+        <% } else { %>
+            <script>document.body.classList.add('chart-ready');</script>
+        <% } %>
+
+        <h3 style="color:#0f172a; margin-bottom: 15px;">Recent Access Log</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Date & Time</th>
+                    <th>Status</th>
+                    <th>Record Key</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% records.forEach(function(item) { %>
+                    <tr>
+                        <td><%= new Date(item.Record.timestamp).toLocaleString() %></td>
+                        <td class="<%= item.Record.status === 'Access Granted' ? 'status-granted' : 'status-denied' %>"><%= item.Record.status %></td>
+                        <td style="font-family:monospace; color:#64748b;"><%= item.Key %></td>
+                    </tr>
+                <% }); %>
+            </tbody>
+        </table>
+
+        <div class="footer">
+            Smart Bench Hyperledger System &bull; Official Institution Export
+        </div>
+    </div>
+</body>
+</html>

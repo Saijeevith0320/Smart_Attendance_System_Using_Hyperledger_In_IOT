@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Smart Bench — Hyperledger Fabric Blockchain Attendance Dashboard. Real-time immutable ledger for RFID-based student attendance.">
+    <title>Smart Bench | Blockchain Attendance</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg-deep:    #060b14;
+            --bg-surface: #0d1626;
+            --bg-card:    rgba(17, 30, 55, 0.75);
+            --border:     rgba(99, 179, 237, 0.12);
+            --border-glow:rgba(99, 179, 237, 0.35);
+            --accent-1:   #38bdf8;
+            --accent-2:   #818cf8;
+            --accent-grad:linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
+            --green:      #34d399;
+            --red:        #f87171;
+            --yellow:     #fbbf24;
+            --text-1:     #f0f6ff;
+            --text-2:     #94a3b8;
+            --text-3:     #4b6080;
+            --radius:     16px;
+            --radius-sm:  10px;
+        }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-1);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ── Animated mesh background ── */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 80% 60% at 20% 10%, rgba(56, 189, 248, 0.07) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 50% at 80% 80%, rgba(129, 140, 248, 0.07) 0%, transparent 60%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ── Layout ── */
+        .page-wrapper { position: relative; z-index: 1; max-width: 1320px; margin: 0 auto; padding: 32px 24px 64px; }
+
+        /* ── Toast ── */
+        #toast-container {
+            position: fixed;
+            top: 24px;
+            right: 24px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .toast {
+            background: var(--bg-card);
+            border: 1px solid var(--border-glow);
+            backdrop-filter: blur(20px);
+            padding: 14px 20px;
+            border-radius: var(--radius-sm);
+            font-size: 0.875rem;
+            color: var(--text-1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            max-width: 320px;
+        }
+        .toast.out { animation: slideOut 0.3s ease forwards; }
+        @keyframes slideIn  { from { opacity:0; transform:translateX(60px); } to { opacity:1; transform:translateX(0); } }
+        @keyframes slideOut { from { opacity:1; transform:translateX(0);    } to { opacity:0; transform:translateX(60px); } }
+        .toast-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+        /* ── Header ── */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 48px;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .brand h1 {
+            font-size: clamp(1.8rem, 4vw, 2.8rem);
+            font-weight: 800;
+            background: var(--accent-grad);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1.1;
+            letter-spacing: -0.02em;
+        }
+        .brand p {
+            color: var(--text-2);
+            font-size: 0.9rem;
+            margin-top: 6px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            font-weight: 500;
+        }
+        .network-badge {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            backdrop-filter: blur(16px);
+            padding: 10px 18px;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            color: var(--text-2);
+            transition: border-color 0.3s;
+        }
+        .network-badge:hover { border-color: var(--border-glow); }
+        .pulse-ring {
+            position: relative;
+            width: 10px; height: 10px;
+        }
+        .pulse-ring::before, .pulse-ring::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+        }
+        .pulse-ring::before { background: var(--green); }
+        .pulse-ring::after {
+            background: var(--green);
+            animation: pulse 2s ease infinite;
+        }
+        .pulse-ring.offline::before { background: var(--red); }
+        .pulse-ring.offline::after  { background: var(--red); animation: none; }
+        @keyframes pulse {
+            0%   { transform: scale(1);   opacity: 0.8; }
+            100% { transform: scale(2.8); opacity: 0; }
+        }
+
+        /* ── Stats Grid ── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            backdrop-filter: blur(20px);
+            border-radius: var(--radius);
+            padding: 28px 24px;
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.3s, transform 0.25s;
+            cursor: default;
+        }
+        .stat-card:hover { border-color: var(--border-glow); transform: translateY(-3px); }
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: var(--accent-grad);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .stat-card:hover::before { opacity: 1; }
+        .stat-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-3);
+            margin-bottom: 12px;
+        }
+        .stat-value {
+            font-size: 2.4rem;
+            font-weight: 800;
+            line-height: 1;
+            background: var(--accent-grad);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .stat-value.green { background: linear-gradient(135deg, #34d399, #10b981); -webkit-background-clip: text; background-clip: text; }
+        .stat-value.yellow { background: linear-gradient(135deg, #fbbf24, #f59e0b); -webkit-background-clip: text; background-clip: text; }
+        .stat-sub { font-size: 0.78rem; color: var(--text-3); margin-top: 8px; }
+        .stat-icon {
+            position: absolute;
+            top: 24px; right: 24px;
+            font-size: 1.5rem;
+            opacity: 0.15;
+        }
+
+        /* ── Ledger Table ── */
+        .ledger-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            backdrop-filter: blur(20px);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+        .ledger-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 22px 28px;
+            border-bottom: 1px solid var(--border);
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .ledger-header h2 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .chain-icon {
+            display: inline-flex;
+            width: 32px; height: 32px;
+            background: linear-gradient(135deg, rgba(56,189,248,0.2), rgba(129,140,248,0.2));
+            border-radius: 8px;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+        }
+        .ledger-actions { display: flex; gap: 10px; align-items: center; }
+        .btn-refresh {
+            display: flex; align-items: center; gap: 6px;
+            background: linear-gradient(135deg, rgba(56,189,248,0.12), rgba(129,140,248,0.12));
+            border: 1px solid var(--border-glow);
+            color: var(--accent-1);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 600;
+            font-family: 'Outfit', sans-serif;
+            transition: background 0.2s, transform 0.15s;
+        }
+        .btn-refresh:hover { background: linear-gradient(135deg, rgba(56,189,248,0.22), rgba(129,140,248,0.22)); transform: scale(1.03); }
+        .btn-refresh.spinning svg { animation: spin 0.9s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .auto-badge {
+            font-size: 0.72rem;
+            color: var(--text-3);
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border);
+            padding: 5px 10px;
+            border-radius: 6px;
+        }
+
+        /* ── Table ── */
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        thead tr { background: rgba(255,255,255,0.025); }
+        th {
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-3);
+            padding: 14px 20px;
+            text-align: left;
+            white-space: nowrap;
+        }
+        tbody tr {
+            border-top: 1px solid rgba(255,255,255,0.04);
+            transition: background 0.2s;
+        }
+        tbody tr:hover { background: rgba(56,189,248,0.04); }
+        tbody tr.new-row { animation: rowFlash 1s ease; }
+        @keyframes rowFlash {
+            0%   { background: rgba(56,189,248,0.15); }
+            100% { background: transparent; }
+        }
+        td {
+            padding: 14px 20px;
+            font-size: 0.85rem;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+        .mono { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-2); }
+        .hash-cell { max-width: 200px; }
+        .hash-full { display: none; }
+        .hash-short { color: var(--accent-2); }
+
+        .student-name { font-weight: 600; color: var(--text-1); }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+        .badge-granted { background: rgba(52,211,153,0.12); color: var(--green); border: 1px solid rgba(52,211,153,0.25); }
+        .badge-denied  { background: rgba(248,113,113,0.12); color: var(--red);   border: 1px solid rgba(248,113,113,0.25); }
+        .badge-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+        .key-cell { font-size: 0.72rem; color: var(--text-3); font-family: 'JetBrains Mono', monospace; }
+
+        /* ── Empty / Loading State ── */
+        .empty-state {
+            text-align: center;
+            padding: 80px 20px;
+        }
+        .empty-icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.4; }
+        .empty-state p { color: var(--text-3); font-size: 0.9rem; }
+
+        /* ── Skeleton ── */
+        .skeleton-row td { padding: 18px 20px; }
+        .skeleton-line {
+            height: 14px;
+            border-radius: 4px;
+            background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.6s infinite;
+        }
+        @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+        /* ── Countdown bar ── */
+        .countdown-wrap { padding: 0 28px 20px; display: flex; align-items: center; gap: 12px; }
+        .countdown-label { font-size: 0.72rem; color: var(--text-3); white-space: nowrap; }
+        .countdown-track { flex: 1; height: 3px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+        .countdown-bar {
+            height: 100%;
+            background: var(--accent-grad);
+            border-radius: 2px;
+            transition: width 1s linear;
+        }
+
+        /* ── Footer ── */
+        footer {
+            margin-top: 48px;
+            text-align: center;
+            font-size: 0.78rem;
+            color: var(--text-3);
+        }
+        footer span { color: var(--accent-1); }
+
+        /* ── Search & Actions ── */
+        .ledger-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 28px;
+            background: rgba(255,255,255,0.015);
+            border-bottom: 1px solid var(--border);
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .search-wrap {
+            display: flex;
+            align-items: center;
+            background: var(--bg-deep);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 14px;
+            flex: 1;
+            max-width: 400px;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+        .search-wrap:focus-within {
+            border-color: var(--accent-1);
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.15);
+        }
+        .search-icon { color: var(--text-3); font-size: 1rem; margin-right: 8px; }
+        .search-input {
+            background: transparent;
+            border: none;
+            color: var(--text-1);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85rem;
+            width: 100%;
+            outline: none;
+        }
+        .search-input::placeholder { color: var(--text-3); }
+        .btn-report {
+            display: none;
+            align-items: center; gap: 6px;
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid var(--accent-1);
+            color: var(--accent-1);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 600;
+            font-family: 'Outfit', sans-serif;
+            transition: all 0.2s;
+        }
+        .btn-report.active { display: flex; }
+        .btn-report:hover { background: rgba(56, 189, 248, 0.2); }
+
+        /* ── Floating Download Button ── */
+        .fab-container {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 100;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .fab-download {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--accent-grad);
+            color: #fff;
+            padding: 14px 20px;
+            border-radius: 999px;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 600;
+            font-size: 0.95rem;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 8px 32px rgba(56, 189, 248, 0.4);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .fab-csv {
+            background: rgba(17, 30, 55, 0.8);
+            border: 1px solid var(--border);
+            color: var(--text-1);
+            box-shadow: none;
+            padding: 14px 16px;
+        }
+        .fab-download:hover {
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 12px 40px rgba(56, 189, 248, 0.6);
+        }
+        .fab-csv:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+        .fab-download svg { width: 18px; height: 18px; }
+
+        /* ── Responsive ── */
+        @media (max-width: 600px) {
+            .page-wrapper { padding: 20px 16px 48px; }
+            header { margin-bottom: 32px; }
+            th:nth-child(1), td:nth-child(1) { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="toast-container" aria-live="polite"></div>
+
+<div class="page-wrapper">
+    <!-- ── Header ── -->
+    <header>
+        <div class="brand">
+            <h1>Smart Bench</h1>
+            <p>Hyperledger Fabric &bull; Immutable Ledger &bull; RFID Attendance</p>
+        </div>
+        <div class="network-badge" id="networkBadge">
+            <div class="pulse-ring" id="pulseRing"></div>
+            <span id="networkLabel">Connecting…</span>
+        </div>
+    </header>
+
+    <!-- ── Stats ── -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon">📋</div>
+            <div class="stat-label">Total Scans</div>
+            <div class="stat-value" id="statTotal">—</div>
+            <div class="stat-sub">All-time on ledger</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">👤</div>
+            <div class="stat-label">Unique Students</div>
+            <div class="stat-value green" id="statStudents">—</div>
+            <div class="stat-sub">Distinct SHA-256 hashes</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">✅</div>
+            <div class="stat-label">Granted Today</div>
+            <div class="stat-value green" id="statGranted">—</div>
+            <div class="stat-sub">Access Granted entries</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">🕐</div>
+            <div class="stat-label">Last Scan</div>
+            <div class="stat-value yellow" id="statLast" style="font-size:1.1rem;padding-top:4px">—</div>
+            <div class="stat-sub">Most recent record</div>
+        </div>
+    </div>
+
+    <!-- ── Ledger Table ── -->
+    <div class="ledger-card">
+        <div class="ledger-header">
+            <h2>
+                <span class="chain-icon">⛓</span>
+                Immutable Ledger Logs
+            </h2>
+            <div class="ledger-actions">
+                <span class="auto-badge" id="autoLabel">Auto-refresh: 15s</span>
+                <button class="btn-refresh" id="refreshBtn" onclick="manualRefresh()">
+                    <svg id="refreshIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+                        <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                    </svg>
+                    Refresh
+                </button>
+            </div>
+        </div>
+
+        <div class="ledger-controls">
+            <div class="search-wrap">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="searchInput" class="search-input" placeholder="Search Campus ID or Name... (e.g. 30066)" oninput="handleSearch()">
+            </div>
+            <div class="report-actions" id="reportActions" style="display:none; gap:10px;">
+                <button class="btn-report" onclick="downloadStudentPDF()" style="background:var(--accent-grad); color:#fff; border:none; display:flex;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10 9 9 9 8 9"></polyline>
+                    </svg>
+                    PDF Report
+                </button>
+                <button class="btn-report" onclick="downloadStudentReport()" style="display:flex;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    CSV
+                </button>
+            </div>
+        </div>
+
+        <div class="countdown-wrap" style="padding-top: 20px;">
+            <span class="countdown-label">Next sync in <span id="countdownSec">15</span>s</span>
+            <div class="countdown-track"><div class="countdown-bar" id="countdownBar" style="width:100%"></div></div>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Transaction Key</th>
+                        <th>Student</th>
+                        <th>SHA-256 Hash</th>
+                        <th>Timestamp</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="logTable">
+                    <!-- populated by JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <footer>
+        <p>Powered by <span>Hyperledger Fabric</span> &bull; Smart Bench Attendance System &copy; 2025</p>
+    </footer>
+</div>
+
+<div class="fab-container">
+    <button class="fab-download fab-csv" onclick="downloadFullLogs()">
+        📊 CSV
+    </button>
+    <button class="fab-download" onclick="downloadFullPDF()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+        Download PDF
+    </button>
+</div>
+
+<script>
+    const API_BASE = 'http://localhost:3001';
+    const REFRESH_INTERVAL = 15; // seconds
+
+    let allRecords = [];
+    let filteredRecords = [];
+    let currentSearch = '';
+    let knownKeys  = new Set();
+    let countdown  = REFRESH_INTERVAL;
+    let timer;
+
+    // ── Fetch & Render ─────────────────────────────────────────
+    async function fetchRecords() {
+        try {
+            const [attRes, healthRes] = await Promise.all([
+                fetch(`${API_BASE}/api/attendance`),
+                fetch(`${API_BASE}/api/health`).catch(() => null)
+            ]);
+
+            // Network status
+            const health = healthRes && healthRes.ok ? await healthRes.json() : null;
+            setNetworkStatus(health);
+
+            if (!attRes.ok) throw new Error('Bad response');
+            const data = await attRes.json();
+            if (!data.success) throw new Error('API error');
+
+            const records  = data.records || [];
+            const newOnes  = records.filter(r => !knownKeys.has(r.Key));
+
+            // Detect new records for toast
+            if (knownKeys.size > 0 && newOnes.length > 0) {
+                newOnes.forEach(r => showToast(r));
+            }
+
+            records.forEach(r => knownKeys.add(r.Key));
+            allRecords = records;
+            
+            filteredRecords = allRecords.filter(item => {
+                if (!currentSearch) return true;
+                const r = item.Record;
+                return (r.studentName && r.studentName.toLowerCase().includes(currentSearch)) ||
+                       (r.studentHash && r.studentHash.toLowerCase().includes(currentSearch));
+            });
+            
+            const reportActions = document.getElementById('reportActions');
+            if (reportActions) {
+                if (currentSearch.length > 0) reportActions.style.display = 'flex';
+                else reportActions.style.display = 'none';
+            }
+
+            renderStats(filteredRecords);
+            renderTable(filteredRecords, newOnes.map(r => r.Key));
+
+        } catch (err) {
+            console.error('Fetch error:', err);
+            setNetworkStatus(null);
+            if (allRecords.length === 0) renderEmpty('Cannot reach backend. Is the Node.js gateway running?');
+        }
+    }
+
+    // ── Stats ─────────────────────────────────────────────────
+    function renderStats(records) {
+        document.getElementById('statTotal').textContent = records.length;
+
+        const uniqueHashes = new Set(records.map(r => r.Record.studentHash)).size;
+        document.getElementById('statStudents').textContent = uniqueHashes;
+
+        const today    = new Date().toDateString();
+        const granted  = records.filter(r =>
+            r.Record.status === 'Access Granted' &&
+            new Date(r.Record.timestamp).toDateString() === today
+        ).length;
+        document.getElementById('statGranted').textContent = granted;
+
+        if (records.length > 0) {
+            const last = new Date(records[0].Record.timestamp);
+            document.getElementById('statLast').textContent = last.toLocaleTimeString();
+        }
+    }
+
+    // ── Table ─────────────────────────────────────────────────
+    function renderTable(records, newKeys) {
+        const tbody = document.getElementById('logTable');
+        if (records.length === 0) { renderEmpty('No records on the ledger yet. Scan a card!'); return; }
+
+        tbody.innerHTML = records.map(item => {
+            const rec      = item.Record;
+            const date     = new Date(rec.timestamp).toLocaleString();
+            const hash     = rec.studentHash || '';
+            const shortHash = hash.substring(0, 8) + '…' + hash.substring(hash.length - 6);
+            const granted  = rec.status === 'Access Granted';
+            const isNew    = newKeys.includes(item.Key);
+
+            return `<tr class="${isNew ? 'new-row' : ''}">
+                <td><span class="key-cell">${item.Key}</span></td>
+                <td><span class="student-name">${escHtml(rec.studentName || 'Unknown')}</span></td>
+                <td class="hash-cell">
+                    <span class="mono hash-short" title="${escHtml(hash)}">${shortHash}</span>
+                </td>
+                <td class="mono">${date}</td>
+                <td>
+                    <span class="badge ${granted ? 'badge-granted' : 'badge-denied'}">
+                        <span class="badge-dot"></span>
+                        ${granted ? 'Granted' : 'Denied'}
+                    </span>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    function renderEmpty(msg) {
+        document.getElementById('logTable').innerHTML = `
+            <tr><td colspan="5">
+                <div class="empty-state">
+                    <div class="empty-icon">⛓️</div>
+                    <p>${msg}</p>
+                </div>
+            </td></tr>`;
+    }
+
+    function renderSkeleton() {
+        document.getElementById('logTable').innerHTML = Array(4).fill(0).map(() => `
+            <tr class="skeleton-row">
+                ${Array(5).fill(0).map(() => `<td><div class="skeleton-line" style="width:${50+Math.random()*40}%"></div></td>`).join('')}
+            </tr>`).join('');
+    }
+
+    // ── Network Badge ──────────────────────────────────────────
+    function setNetworkStatus(health) {
+        const ring  = document.getElementById('pulseRing');
+        const label = document.getElementById('networkLabel');
+        if (!health) {
+            ring.className    = 'pulse-ring offline';
+            label.textContent = 'Backend Offline';
+            return;
+        }
+        ring.className = 'pulse-ring'; // green
+        if (health.fabricReady) {
+            label.textContent = '⛓ Hyperledger Fabric';
+        } else {
+            label.textContent = '💾 Local Store Mode';
+        }
+    }
+
+    // ── Toast ─────────────────────────────────────────────────
+    function showToast(record) {
+        const name    = record.Record.studentName || 'Unknown';
+        const granted = record.Record.status === 'Access Granted';
+        const color   = granted ? '#34d399' : '#f87171';
+        const toast   = document.createElement('div');
+        toast.className = 'toast';
+        toast.innerHTML = `<div class="toast-dot" style="background:${color}"></div>
+            <div><strong>${escHtml(name)}</strong><br>
+            <span style="color:#94a3b8;font-size:0.78rem">${granted ? '✅ Committed to ledger' : '❌ Denied — logged on ledger'}</span></div>`;
+        document.getElementById('toast-container').appendChild(toast);
+        setTimeout(() => { toast.classList.add('out'); setTimeout(() => toast.remove(), 350); }, 4000);
+    }
+
+    // ── Countdown ─────────────────────────────────────────────
+    function startCountdown() {
+        clearInterval(timer);
+        countdown = REFRESH_INTERVAL;
+        const bar = document.getElementById('countdownBar');
+        const sec = document.getElementById('countdownSec');
+        timer = setInterval(() => {
+            countdown--;
+            sec.textContent = countdown;
+            bar.style.width = (countdown / REFRESH_INTERVAL * 100) + '%';
+            if (countdown <= 0) {
+                fetchRecords();
+                countdown = REFRESH_INTERVAL;
+            }
+        }, 1000);
+    }
+
+    // ── Manual Refresh ────────────────────────────────────────
+    async function manualRefresh() {
+        const btn  = document.getElementById('refreshBtn');
+        const icon = document.getElementById('refreshIcon');
+        btn.classList.add('spinning');
+        icon.parentElement.classList.add('spinning');
+        btn.disabled = true;
+        await fetchRecords();
+        btn.classList.remove('spinning');
+        icon.parentElement.classList.remove('spinning');
+        btn.disabled = false;
+        startCountdown();
+    }
+
+    // ── Escape HTML ───────────────────────────────────────────
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ── Search & Filter ───────────────────────────────────────
+    function handleSearch() {
+        currentSearch = document.getElementById('searchInput').value.toLowerCase().trim();
+        filteredRecords = allRecords.filter(item => {
+            if (!currentSearch) return true;
+            const r = item.Record;
+            return (r.studentName && r.studentName.toLowerCase().includes(currentSearch)) ||
+                   (r.studentHash && r.studentHash.toLowerCase().includes(currentSearch));
+        });
+        
+        const reportActions = document.getElementById('reportActions');
+        if (reportActions) {
+            if (currentSearch.length > 0) reportActions.style.display = 'flex';
+            else reportActions.style.display = 'none';
+        }
+
+        renderStats(filteredRecords);
+        renderTable(filteredRecords, []);
+    }
+
+    // ── Export CSV & PDF ──────────────────────────────────────
+    function triggerBlobDownload(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    function showToastMsg(title, desc, colorCode) {
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.innerHTML = `<div class="toast-dot" style="background:${colorCode}"></div>
+            <div><strong>${escHtml(title)}</strong><br>
+            <span style="color:var(--text-2);font-size:0.78rem">${escHtml(desc)}</span></div>`;
+        document.getElementById('toast-container').appendChild(toast);
+        setTimeout(() => { toast.classList.add('out'); setTimeout(() => toast.remove(), 350); }, 4000);
+    }
+
+    async function downloadFullPDF() {
+        showToastMsg('Generating PDF', 'Please wait, rendering presentation...', 'var(--yellow)');
+        try {
+            const res = await fetch(`${API_BASE}/api/export/pdf/full`, { method: 'POST' });
+            if (!res.ok) throw new Error('Failed to generate PDF');
+            const blob = await res.blob();
+            triggerBlobDownload(blob, `SmartBench_Ledger_${new Date().toISOString().split('T')[0]}.pdf`);
+            showToastMsg('Download Complete', 'Full Ledger PDF exported successfully.', 'var(--green)');
+        } catch (err) {
+            console.error(err);
+            showToastMsg('Export Error', err.message, 'var(--red)');
+        }
+    }
+
+    async function downloadStudentPDF() {
+        const studentId = currentSearch;
+        if (!studentId) return;
+        showToastMsg('Generating Student PDF', 'Please wait, compiling profile...', 'var(--yellow)');
+        try {
+            const res = await fetch(`${API_BASE}/api/export/pdf/student/${encodeURIComponent(studentId)}`, { method: 'POST' });
+            if (!res.ok) throw new Error('Student not found or generation failed');
+            const blob = await res.blob();
+            triggerBlobDownload(blob, `SmartBench_${studentId}_Profile.pdf`);
+            showToastMsg('Download Complete', 'Student Profile PDF exported successfully.', 'var(--green)');
+        } catch (err) {
+            console.error(err);
+            showToastMsg('Export Error', err.message, 'var(--red)');
+        }
+    }
+
+    function downloadCSV(records, filename) {
+        if (!records || records.length === 0) {
+            alert("No records to download.");
+            return;
+        }
+
+        let csvString = "Student Name,Campus ID / Hash,Status,Timestamp,Blockchain Record Key\n";
+
+        records.forEach(item => {
+            const r = item.Record;
+            const name = `"${(r.studentName || 'Unknown').replace(/"/g, '""')}"`;
+            const hash = `"${(r.studentHash || '').replace(/"/g, '""')}"`;
+            const status = `"${(r.status || '').replace(/"/g, '""')}"`;
+            const time = `"${new Date(r.timestamp).toLocaleString().replace(/"/g, '""')}"`;
+            const key = `"${(item.Key || '').replace(/"/g, '""')}"`;
+            csvString += `${name},${hash},${status},${time},${key}\n`;
+        });
+
+        if (filename.includes('Report')) {
+            const totalScans = records.length;
+            const granted = records.filter(r => r.Record.status === 'Access Granted').length;
+            const denied = totalScans - granted;
+            const lastSeen = records.length > 0 ? new Date(records[0].Record.timestamp).toLocaleString() : 'N/A';
+            csvString += `\nSUMMARY\n`;
+            csvString += `Total Scans,${totalScans}\n`;
+            csvString += `Access Granted,${granted}\n`;
+            csvString += `Access Denied,${denied}\n`;
+            csvString += `Last Seen,${lastSeen}\n`;
+        }
+
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        triggerBlobDownload(blob, filename);
+        showToastMsg('Download Complete', `${filename} exported successfully.`, 'var(--accent-1)');
+    }
+
+    function downloadFullLogs() {
+        downloadCSV(allRecords, `SmartBench_Ledger_${new Date().toISOString().split('T')[0]}.csv`);
+    }
+
+    function downloadStudentReport() {
+        const student = currentSearch || 'Student';
+        downloadCSV(filteredRecords, `SmartBench_Report_${student}_${new Date().toISOString().split('T')[0]}.csv`);
+    }
+
+    // ── Init ─────────────────────────────────────────────────
+    renderSkeleton();
+    fetchRecords();
+    startCountdown();
+</script>
+</body>
+</html>

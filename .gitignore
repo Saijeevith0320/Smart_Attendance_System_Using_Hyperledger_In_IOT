@@ -1,0 +1,16 @@
+# Node
+node_modules/
+npm-debug.log
+.env
+
+# MacOS
+.DS_Store
+
+# Fabric
+fabric-scripts/fabric-samples/
+*.pem
+*.key
+*.crt
+
+# Editor
+.vscode/

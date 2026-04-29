@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Full Attendance Report</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333; margin: 0; padding: 40px; }
+        .header { text-align: center; margin-bottom: 40px; }
+        .header h1 { margin: 0; font-size: 28px; color: #0d1626; text-transform: uppercase; letter-spacing: 2px; }
+        .header p { margin: 5px 0 0; font-size: 14px; color: #666; }
+        .gradient-line { height: 4px; background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%); margin: 20px 0; border-radius: 2px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background-color: #f8fafc; color: #475569; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+        tr:nth-child(even) { background-color: #fdfdfd; }
+        .status-granted { color: #10b981; font-weight: bold; }
+        .status-denied { color: #ef4444; font-weight: bold; }
+        .footer { margin-top: 50px; text-align: center; font-size: 10px; color: #aaa; border-top: 1px solid #eee; padding-top: 20px; }
+        .hash-mono { font-family: monospace; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Smart Bench Ledger</h1>
+        <p>Immutable Blockchain Attendance Export</p>
+        <p>Generated on <%= new Date().toLocaleString() %></p>
+        <div class="gradient-line"></div>
+    </div>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>Student Name</th>
+                <th>Campus ID / Hash</th>
+                <th>Timestamp</th>
+                <th>Status</th>
+                <th>Record Key</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% records.forEach(function(item) { %>
+                <tr>
+                    <td><strong><%= item.Record.studentName || 'Unknown' %></strong></td>
+                    <td class="hash-mono"><%= item.Record.studentHash ? (item.Record.studentHash.substring(0,8) + '...' + item.Record.studentHash.substring(item.Record.studentHash.length-6)) : '' %></td>
+                    <td><%= new Date(item.Record.timestamp).toLocaleString() %></td>
+                    <td class="<%= item.Record.status === 'Access Granted' ? 'status-granted' : 'status-denied' %>"><%= item.Record.status %></td>
+                    <td class="hash-mono"><%= item.Key %></td>
+                </tr>
+            <% }); %>
+            <% if (records.length === 0) { %>
+                <tr><td colspan="5" style="text-align:center;">No records found.</td></tr>
+            <% } %>
+        </tbody>
+    </table>
+
+    <div class="footer">
+        Powered by Hyperledger Fabric &bull; Total Records: <%= records.length %>
+    </div>
+</body>
+</html>
